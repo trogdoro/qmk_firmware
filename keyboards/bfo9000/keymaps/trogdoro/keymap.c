@@ -5,8 +5,33 @@
 // because it hangs around your neck, and rests on your chest as
 // you type.
 //
+// The "Seamless Stenography and Qwerty" feature is something you
+// might be interested in copying and pasting into your keymap. If
+// so, copy the following variables, and the blocks of code below
+// that use them:
+//
+
+//
+// "Seamless Stenography and Qwerty" feature. These vars (and the
+// code below that uses them) let you type in steno and qwerty
+// seamlessly at the same time (without having to type a key to
+// toggle between them, which would otherwise be necessary). It
+// does steno via Plover.
+//
+// See readme_seamless_steno_and_qwerty.md for more about this
+// feature.
+//
 #include QMK_KEYBOARD_H
+static uint16_t steno_key_pressed_timer;
+static uint16_t steno_temporarily_disabled_timer;
+static uint16_t steno_grace_period_timer;
+static bool key_not_yet_released;
+static bool steno_was_combo;
+static bool exit_steno_flag;
+static keyrecord_t *exit_steno_record;
+
 #include "keymap_steno.h"
+#include <print.h>
 
 #define ____ KC_TRNS
 
@@ -21,6 +46,129 @@ enum the_layers {
 // Without this, QMK won't enable steno.
 void matrix_init_user() {
   steno_set_mode(STENO_MODE_GEMINI); // or STENO_MODE_BOLT
+}
+
+// Utility function > Given a record, return the keycode pressed.
+uint16_t lookup_keycode(keyrecord_t *record) {
+  keypos_t key = record->event.key;
+  uint8_t layer = layer_switch_get_layer(key);
+  update_source_layers_cache(key, layer);
+  return keymap_key_to_keycode(layer, key);
+}
+
+void matrix_scan_user(void) {
+
+  // "Seamless Stenography and Qwerty" feature.
+  // Steno is temporarily disabled, so turn it back on
+  if(steno_temporarily_disabled_timer && ! key_not_yet_released) {
+
+    // If timer passed pause, enable steno layer
+    if(timer_elapsed(steno_temporarily_disabled_timer) > 300) {
+      layer_on(_PLOVER);
+      // Turn timer off
+      steno_temporarily_disabled_timer = 0;
+    }
+  }
+
+}
+
+
+
+
+bool process_record_user(uint16_t keycode, keyrecord_t *record) {
+
+  if (record->event.pressed) {
+    // Key was pressed, so remember.
+    key_not_yet_released = true;
+  } else {
+    // key was released, so remember.
+    key_not_yet_released = false;
+
+    // Steno already temporarily disabled, so disable it a little longer
+    if(steno_temporarily_disabled_timer)
+      // Extend timer
+      steno_temporarily_disabled_timer = timer_read();
+  }
+
+  return true;   // Let QMK send the enter press/release events
+
+}
+
+
+bool postprocess_steno_user(uint16_t keycode, keyrecord_t *record, steno_mode_t mode, uint8_t chord[6], int8_t pressed) {
+
+  // This function is called after a key has been processed, but
+  // before any decision about whether or not to send a chord.
+
+  int8_t pressed_after = pressed;
+  pressed_after += record->event.pressed ? 1 : -1;
+
+  // xprintf("\n    KL: keycode: %u, row: %u, column: %u, event.pressed: %u\n", keycode, record->event.key.col, record->event.key.row, record->event.pressed);
+  // xprintf("--- pressed: %u, pressed_after: %u\n\n", pressed, pressed_after);
+
+  // "Seamless Stenography and Qwerty" feature.
+  if(pressed == 0) {
+    // First key pressed in steno combo
+    steno_key_pressed_timer = timer_read();
+    steno_was_combo = false;
+
+  } else if(pressed_after > 1) {
+    // Combo, so never go to qwerty
+    steno_was_combo = true;
+
+  } else if(pressed_after == 0 && ! steno_was_combo) {
+    // Last key pressed in combo
+
+    if (timer_elapsed(steno_key_pressed_timer) > 150) {
+      // slow
+    } else {
+
+      // They've typed steno really recently, so assume this isn't qwerty (even if it's a single key)
+      if (timer_elapsed(steno_grace_period_timer) < 300) {
+        // Just continue as normal steno
+        return true;
+      }
+
+      // Typed quickly, so treat as qwerty
+      exit_steno_flag = true;
+      exit_steno_record = record;
+    }
+  }
+  return true;
+}
+
+bool send_steno_chord_user(steno_mode_t mode, uint8_t chord[6]) {
+
+  // They typed a quick single key, so treat it and subsequent keys as qwerty, instead of sending steno chord
+  if(exit_steno_flag) {
+
+    // Special handling for certain keys
+    if(exit_steno_record->event.key.row == 0 && exit_steno_record->event.key.col == 1) {
+      // option tab
+      SEND_STRING(SS_LALT("\t"));
+      return false;
+    }
+
+    layer_off(_PLOVER);
+
+    uint16_t keycode = lookup_keycode(exit_steno_record);
+
+    register_code(keycode);
+    unregister_code(keycode);
+
+    exit_steno_flag = false;
+
+    // Start timer that will turn steno back on in half a second
+    steno_temporarily_disabled_timer = timer_read();
+
+    return false;
+  }
+
+
+  // Steno stroke is finishing, so treat immediately following keystrokes as steno ( because some of them might be single keystrokes
+  steno_grace_period_timer = timer_read();
+
+  return true;
 }
 
 
