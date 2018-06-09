@@ -48,6 +48,19 @@ void matrix_init_user() {
   steno_set_mode(STENO_MODE_GEMINI); // or STENO_MODE_BOLT
 }
 
+//
+// "Steno Thumb Modifiers" feature.
+// These vars (and the code below that uses them) make the thumb
+// keys (control, command, etc) work just like when in qwerty,
+// when you are in steno.
+//
+// The keycode of the key that might be used as a modifier, if
+// the user holds it down and uses it like one:
+static uint16_t steno_modifier_candidate;
+// Whether the modifier was actually sent:
+static bool steno_modifier_on;
+static bool steno_modifier_combo_typed;
+
 // Utility function > Given a record, return the keycode pressed.
 uint16_t lookup_keycode(keyrecord_t *record) {
   keypos_t key = record->event.key;
@@ -57,6 +70,18 @@ uint16_t lookup_keycode(keyrecord_t *record) {
 }
 
 void matrix_scan_user(void) {
+
+  // "Steno Thumb Modifiers" feature.
+  // If they've been holding the modifier down for a bit, send the keycode.
+  // Only if _candidate and not _on
+  if(steno_modifier_candidate && !steno_modifier_on && !steno_was_combo) {
+    // Only if timer past .5s
+    if (timer_elapsed(steno_key_pressed_timer) > 120) {
+      steno_modifier_on = true;
+      register_code(steno_modifier_candidate);
+    }
+  }
+
 
   // "Seamless Stenography and Qwerty" feature.
   // Steno is temporarily disabled, so turn it back on
@@ -106,6 +131,55 @@ bool postprocess_steno_user(uint16_t keycode, keyrecord_t *record, steno_mode_t 
   // xprintf("\n    KL: keycode: %u, row: %u, column: %u, event.pressed: %u\n", keycode, record->event.key.col, record->event.key.row, record->event.pressed);
   // xprintf("--- pressed: %u, pressed_after: %u\n\n", pressed, pressed_after);
 
+
+  // "Steno Thumb Modifiers" feature.
+  if(pressed == 0) {
+
+    steno_modifier_combo_typed = false;
+
+    // First key pressed, so remember it as a potential modifier key
+    switch (keycode) {
+      case STN_O:
+        steno_modifier_candidate = KC_LCTRL;
+        break;
+      case STN_A:
+        steno_modifier_candidate = KC_LGUI;
+        break;
+      case STN_U:
+        steno_modifier_candidate = KC_LSFT;
+        break;
+      case STN_N1:
+        steno_modifier_candidate = KC_LALT;
+        break;
+      case STN_E:
+        // todo set to special code
+        print("E - shit > how to use punctuation layer?");
+        steno_modifier_candidate = 0;
+        break;
+      default:
+        steno_modifier_candidate = 0;
+    }
+
+  } else if(pressed >= 1 && steno_modifier_on && record->event.pressed) {
+
+    // Pressed key when modifier held down
+    layer_off(_PLOVER);
+
+    uint16_t qwerty_keycode = lookup_keycode(record);
+
+    register_code(qwerty_keycode);
+    unregister_code(qwerty_keycode);
+    layer_on(_PLOVER);
+
+    // Just to force cache reloading
+    lookup_keycode(record);
+
+    steno_modifier_combo_typed = true;
+
+    return true;
+  }
+
+
   // "Seamless Stenography and Qwerty" feature.
   if(pressed == 0) {
     // First key pressed in steno combo
@@ -138,6 +212,31 @@ bool postprocess_steno_user(uint16_t keycode, keyrecord_t *record, steno_mode_t 
 }
 
 bool send_steno_chord_user(steno_mode_t mode, uint8_t chord[6]) {
+
+  // "Steno Thumb Modifiers" feature.
+  // Stop holding down modifier, if holding it down
+
+  // Only if _candidate and _on are set
+  if(steno_modifier_on) {
+
+    // unregister candidate keycode
+    unregister_code(steno_modifier_candidate);
+    steno_modifier_candidate = 0;
+    steno_modifier_on = false;
+
+    // Don't return false if > nothing was typed, and modifier wasn't held down very long, because we want to treat it like a single steno stroke
+    if(! steno_modifier_combo_typed && timer_elapsed(steno_key_pressed_timer) < 500) {
+      // fine
+    } else {
+      return false;
+    }
+
+  }
+
+  // if just _candidate set > clear _candidate
+  if(steno_modifier_candidate) {
+    steno_modifier_candidate = 0;
+  }
 
   // They typed a quick single key, so treat it and subsequent keys as qwerty, instead of sending steno chord
   if(exit_steno_flag) {
