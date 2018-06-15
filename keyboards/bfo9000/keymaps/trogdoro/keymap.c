@@ -76,7 +76,8 @@ void matrix_scan_user(void) {
   // Only if _candidate and not _on
   if(steno_modifier_candidate && !steno_modifier_on && !steno_was_combo) {
     // Only if timer past .5s
-    if (timer_elapsed(steno_key_pressed_timer) > 120) {
+    //if (timer_elapsed(steno_key_pressed_timer) > 120) {
+    if (timer_elapsed(steno_key_pressed_timer) > 85) {
       steno_modifier_on = true;
       register_code(steno_modifier_candidate);
     }
@@ -88,7 +89,8 @@ void matrix_scan_user(void) {
   if(steno_temporarily_disabled_timer && ! key_not_yet_released) {
 
     // If timer passed pause, enable steno layer
-    if(timer_elapsed(steno_temporarily_disabled_timer) > 300) {
+    //if(timer_elapsed(steno_temporarily_disabled_timer) > 300) {
+    if(timer_elapsed(steno_temporarily_disabled_timer) > 250) {
       layer_on(_PLOVER);
       // Turn timer off
       steno_temporarily_disabled_timer = 0;
@@ -278,7 +280,7 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
     KC_MS_WH_DOWN,  KC_Q,    KC_O,   KC_BSPC,       KC_R,  KC_N,  KC_V,  KC_5, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, \
     KC_BTN1,        KC_J,    KC_E,   KC_ENT,        KC_C,  KC_T,  KC_W,  TG(_PLOVER), ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, \
     CTL_T(KC_SPC),  KC_K,    KC_U,   KC_P,          KC_G,  KC_H,  KC_M,  LT(_PUNCTUATION, KC_DOT), ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, \
-    GUI_T(KC_ESC),  KC_X,    KC_I,   KC_Y,          KC_F,  KC_D,  KC_B,  KC_LSFT, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, \
+    GUI_T(KC_ESC),  KC_X,    KC_I,   KC_Y,          KC_F,  KC_D,  KC_B,  SFT_T(KC_ESC), ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, \
     ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____ \
 ),
 
